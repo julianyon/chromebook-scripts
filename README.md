@@ -17,7 +17,7 @@ The filesystem must be labelled so it can be identified, and it must support the
 
 There is no need to invoke it as root, as long as sudo is available. `COMMAND`, if supplied, must be the name of one of crouton's launch scripts. As a convenience, the prefix "start" will be added if the specified script does not exist. e.g.
 
-    $ bruschetta xfce4 trusty
+    $ bruschetta xfce4 -n trusty
 
 will enter an [XFCE4][3] session in the "trusty" chroot by running the `startxfce4` script, if that target is installed.
 
