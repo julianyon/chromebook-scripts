@@ -1,0 +1,184 @@
+#! /bin/sh
+# Copyright (C) 2015 Julian R Yon <julian@julianyon.net>
+# You may use this code under the same terms as FreeBSD.
+# See the file LICENSE.BSD2 for the license text.
+
+unset FSLABEL DEFAULT_CMD MOUNTPOINT MOUNT_OPTS HOSTNAME
+PROGNAME=`basename "$0"`
+DEFAULT_CONF="$PROGNAME.conf"
+DEFAULT_CONF_PATH="$HOME/.bruschetta/$DEFAULT_CONF"
+
+# WARNING: The config file will be sourced as root
+CONF=${BRUSCHETTA_CONFIG:-$DEFAULT_CONF_PATH}
+
+case $1 in
+  --help|-help|-[hH?])
+    echo "Usage: $PROGNAME [COMMAND [ARG]...]"
+    echo "Starts a crouton session on removable storage.\n"
+    echo "See README.md for full usage information."
+    exit 0
+    ;;
+esac
+
+if [ `id -u` -ne 0 ] ; then
+  this_script=`readlink -en "$0" 2>/dev/null`
+  sudo_bin=`which sudo 2>/dev/null`
+  if [ "x$this_script" != x -a "x$sudo_bin" != x ] ; then
+    prompt=`echo -n "Superuser privileges are required.\nPlease enter the password for %p: "`
+    exec "$sudo_bin" -p "$prompt" "BRUSCHETTA_CONFIG=$CONF" "$this_script" "$@"
+  fi
+  echo "Superuser privileges are required. You will need to run me as root." >&2
+  exit 1
+fi
+
+if [ -f "$CONF" -a -r "$CONF" ] ; then
+  # There is technically a race here, but anyone able to exploit it
+  # doesn't need to anyway.
+  case `stat -c '%a' "$CONF"` in
+    *[2367])
+      echo "Refusing to continue as configuration file is world-writable." >&2
+      echo "Please change the permissions on ${CONF}." >&2
+      exit 1
+      ;;
+    *)
+      echo "Sourcing configuration file" >&2
+      . "$CONF"
+      ;;
+  esac
+else
+  echo "Config file $CONF does not exist or is not readable."
+fi
+
+FSLABEL=${FSLABEL:-crouton}
+DEFAULT_CMD=${DEFAULT_CMD:-enter-chroot}
+MOUNTPOINT=${MOUNTPOINT:-/run/bruschetta/$FSLABEL}
+MOUNT_OPTS=${MOUNT_OPTS:-rw,dev,exec,suid,async,dirsync,noatime,discard}
+
+if [ $# -eq 0 ] ; then
+  crouton_cmd=$DEFAULT_CMD
+else
+  crouton_cmd=$1
+  shift
+fi
+
+persist_usb() {
+  echo "Turning on USB persistence..." >&2
+  for usbp in /sys/bus/usb/devices/*/power/persist; do
+    if [ -e "$usbp" ]; then
+      echo 1 > "$usbp"
+    fi
+  done
+}
+
+unpersist_usb() {
+  echo "Turning off USB persistence..." >&2
+  for usbp in /sys/bus/usb/devices/*/power/persist; do
+    if [ -e "$usbp" ]; then
+      echo 0 > "$usbp"
+    fi
+  done
+}
+
+mount_external() {
+  local res
+  if mkdir -p "${MOUNTPOINT}" >&2 && \
+    mount -t ext4 -L "${FSLABEL}" -o "${MOUNT_OPTS}" --target "${MOUNTPOINT}" >&2
+  then
+    echo "External filesystem successfully mounted." >&2
+  else
+    res=$?
+    echo "Failed to mount external filesystem (exit code: $res)." >&2
+    return $res
+  fi
+  return 0
+}
+
+mounted_external() {
+  findmnt -e LABEL="${FSLABEL}" "${MOUNTPOINT}" >/dev/null 2>&1
+  return $?
+}
+
+unmount_external() {
+  local res output
+
+  res=0
+  output=`umount "${MOUNTPOINT}" 2>&1`
+
+  if mounted_external ; then
+    if echo "${output}" | grep 'target is busy' >/dev/null 2>&1 ; then
+      res=2
+      echo "External filesystem is still in use." >&2
+    else
+      res=1
+      echo "External filesystem is still mounted; umount output follows:" >&2
+      echo "${output}" >&2
+    fi
+    echo "Use \"${PROGNAME} done\" when ready to unmount." >&2
+  else
+    echo "External filesystem successfully unmounted." >&2
+  fi
+
+  return $res
+}
+
+signal_handler () {
+  echo "${PROGNAME}: Caught SIG${1}." >&2
+  sleep 2
+}
+
+if [ "$crouton_cmd" != "done" ] ; then
+  for sig in HUP INT PIPE TERM; do
+    trap "signal_handler ${sig}" $sig
+  done
+
+  if mounted_external ; then
+    echo "External filesystem is already mounted." >&2
+  else
+    if mount_external ; then
+      persist_usb
+    else
+      exit $?
+    fi
+  fi
+
+  if [ x$HOSTNAME != x ] ; then
+    cur_hostname=`hostname`
+    if [ "x${cur_hostname}" = "xlocalhost" ] ; then
+      hostname "${HOSTNAME}"
+    fi
+  fi
+
+  if [ "$crouton_cmd" != "mount" ] ; then
+    cmd_exe="${MOUNTPOINT}/bin/${crouton_cmd}"
+    if [ ! -x $cmd_exe ] ; then
+      cmd_altexe="${MOUNTPOINT}/bin/start${crouton_cmd}"
+      if [ -x $cmd_altexe ] ; then
+        cmd_exe=$cmd_altexe
+      fi
+    fi
+
+    if $cmd_exe "$@" ; then
+      result=0
+    else
+      result=$?
+      echo "Process returned non-zero exit code ($result)." >&2
+    fi
+  else
+    echo "Use \"${PROGNAME} done\" when ready to unmount." >&2
+    exit 0
+  fi
+
+  trap - HUP INT PIPE TERM
+fi
+
+if mounted_external ; then
+  if unmount_external ; then
+    unpersist_usb
+    echo "Done." >&2
+  fi
+else
+  echo "External filesystem is not mounted." >&2
+fi
+
+exit $result
+# vi: set ts=2 et fenc=utf-8 ff=unix:

@@ -1,0 +1,29 @@
+#! /bin/sh
+# Author:  Julian R Yon <julian@julianyon.net>
+# Date:    2015-04-24
+# Licence: Public domain (CC0)
+#          http://creativecommons.org/publicdomain/zero/1.0/
+#          To the extent possible under law, the author has waived all
+#          copyright and related or neighboring rights to this work.
+#          Acknowledgement is appreciated, but not required.
+
+REGEXP4='^\s*127\.0\.0\.1\s.*$'
+REGEXP6='^\s*::1\s.*$'
+
+dedup () {
+  echo $1 | tr -s [:space:] "\n" | sort -u | tr "\n" " "
+}
+
+hostnames="`/bin/hostname -s` `/bin/hostname -f` `/bin/hostname -A`"
+hostnames4=`dedup "localhost ${hostnames}"`
+hostnames6=`dedup "ip6-localhost ip6-loopback ${hostnames4}"`
+
+subst4="127.0.0.1\t${hostnames4}"
+subst6="::1      \t${hostnames6}"
+
+tmpfile=`mktemp` && \
+        sed -e "s/${REGEXP4}/${subst4}/" \
+            -e "s/${REGEXP6}/${subst6}/" \
+          </etc/hosts >$tmpfile && \
+          chmod 644 $tmpfile && \
+        mv ${tmpfile} /etc/hosts
