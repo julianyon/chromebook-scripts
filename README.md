@@ -59,6 +59,7 @@ This script is also released into the public domain ([CC0]).
 
 ----------
 **Copyright © 2015 Julian R Yon** < [julian@julianyon.net][7] >
+
 At the user's discretion, this document may be used under either of the following licenses:
 
  - [Creative Commons Attribution 4.0 International License](http://creativecommons.org/licenses/by/4.0/).
