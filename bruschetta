@@ -41,12 +41,12 @@ if [ -f "$CONF" -a -r "$CONF" ] ; then
       exit 1
       ;;
     *)
-      echo "Sourcing configuration file" >&2
+      echo "Sourcing ${CONF}..." >&2
       . "$CONF"
       ;;
   esac
 else
-  echo "Config file $CONF does not exist or is not readable."
+  echo "Using default configuration." >&2
 fi
 
 FSLABEL=${FSLABEL:-crouton}
