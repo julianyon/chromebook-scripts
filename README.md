@@ -1,3 +1,5 @@
+** Note: My Chromebook got broken some time ago and was never replaced. Consequently these scripts have never been updated, and the chances are that they are useless by now. **
+
 chromebook-scripts
 ================
 This repository contains some scripts which may be of use to people using their Chromebook in dev mode. Testing to date has been done on an [Acer C720][1]. Your mileage may vary. I use these scripts on a daily basis without any problems, but **no warranty** or support of any kind is offered. Do feel free to report any bugs, though.
